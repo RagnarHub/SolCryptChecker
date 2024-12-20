@@ -55,5 +55,50 @@ class CryptHandler
     );
   }
 
+  public function get_data($write_bd)
+  {
+    $tokens_list = array();
+    $token_prices = array();
+    //сбор массива для запроса
+    foreach ($this->FOLLOWING_TOKENS as $user => $tokens) {
+      foreach ($tokens as $token_title => $token_address) {
+        if (!in_array($token_address, $tokens_list)) {
+          if ($tokens_list[$token_title]) {
+            $tokens_list[$token_title.'|'.mb_substr($token_address, 0, 5)] = $token_address;
+          } else {
+            $tokens_list[$token_title] = $token_address;
+          }
+        }
+      }
+    }
+    //запрос данных пакетами
+    $tokens_list_str = '';
+    $i = 0;
+    foreach ($tokens_list as $token_title => $token_address) {
+      $i++;
+      if ($i > $this->SETTINGS['limits']['simple_request_tokens']) {
+        $prices_data = $this->send_token_price_request($tokens_list_str);
+        $token_prices = array_merge($token_prices, $prices_data);
+        $tokens_list_str = '';
+        $i = 1;
+      }
+      if ($tokens_list_str) $tokens_list_str = $tokens_list_str.',';
+      $tokens_list_str = $tokens_list_str.$token_address;
+    }
+    if ($tokens_list_str) {
+      $prices_data = $this->send_token_price_request($tokens_list_str);
+      $token_prices = array_merge($token_prices, $prices_data);
+    }
+    //запись данных в БД
+    if ($write_bd) {
+      $log = array();
+      foreach ($tokens_list as $token_title => $token_address) {
+        $log[$token_address] = array('title' => $token_title, 'price' => $token_prices[$token_address]);
+      }
+      $this->BD_REQUESTS->add_log_data($log);
+    }
+    return $token_prices;
+  }
+
 
 }
