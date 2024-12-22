@@ -100,5 +100,147 @@ class CryptHandler
     return $token_prices;
   }
 
+  public function price_comparing_notify($token_prices, $disable_checks = false)
+  {
+    $log_5min = $this->BD_REQUESTS->get_log_data(5, $disable_checks);
+    if ($log_5min == false) {
+      $chat_id = $this->USERS['andy']['tg_chat_id'];
+      $user_notification = '⚠️Ошибка в работе системы - не найдена запись 5-минутной давности!⚠️';
+      if ($chat_id) {
+        $this->TG_NOTIFY->send_message($chat_id, $user_notification);
+      }
+      return false;
+    }
+    $log_30min = $this->BD_REQUESTS->get_log_data(30, $disable_checks);
+    $log_1hour = $this->BD_REQUESTS->get_log_data(60, $disable_checks);
+    $log_6hour = $this->BD_REQUESTS->get_log_data(360, $disable_checks);
+    $log_1day = $this->BD_REQUESTS->get_log_data(1440, $disable_checks);
+    $notify_data = array();
+    foreach ($token_prices as $token_address => $token_price) {
+      if (!$token_address or !$token_price) continue;
+      if ($token_price >= 1) {
+        $token_price_round = round($token_price, 2);
+      } else {
+        $round_level = abs(floor(log10($token_price)))+2;
+        //$token_price_round = round($token_price, $round_level);
+        $token_price_round = number_format($token_price, $round_level, '.', '');
+      }
+      $token_5min_price_diff = false;
+      $token_30min_price_diff = false;
+      $token_1hour_price_diff = false;
+      $token_6hour_price_diff = false;
+      $token_1day_price_diff = false;
+
+      $token_info_5min_ago = $log_5min[$token_address];
+      if (!$token_info_5min_ago) continue;
+      if ($log_30min) $token_info_30min_ago = $log_30min[$token_address];
+      if ($log_1hour) $token_info_1hour_ago = $log_1hour[$token_address];
+      if ($log_6hour) $token_info_6hour_ago = $log_6hour[$token_address];
+      if ($log_1day) $token_info_1day_ago = $log_1day[$token_address];
+
+      if ($log_5min and $token_info_5min_ago) {
+        if ($token_info_5min_ago['price']) {
+          $token_5min_price_diff = round(($token_price/$token_info_5min_ago['price'])*100 - 100, 2);
+        }
+      }
+      if ($log_30min and $token_info_30min_ago) {
+        if ($token_info_30min_ago['price']) {
+          $token_30min_price_diff = round(($token_price/$token_info_30min_ago['price'])*100 - 100, 2);
+        }
+      }
+      if ($log_1hour and $token_info_1hour_ago) {
+        if ($token_info_1hour_ago['price']) {
+          $token_1hour_price_diff = round(($token_price/$token_info_1hour_ago['price'])*100 - 100, 2);
+        }
+      }
+      if ($log_6hour and $token_info_6hour_ago) {
+        if ($token_info_6hour_ago['price']) {
+          $token_6hour_price_diff = round(($token_price/$token_info_6hour_ago['price'])*100 - 100, 2);
+        }
+      }
+      if ($log_1day and $token_info_1day_ago) {
+        if ($token_info_1day_ago['price']) {
+          $token_1day_price_diff = round(($token_price/$token_info_1day_ago['price'])*100 - 100, 2);
+        }
+      }
+      $token_notify = '';
+      if (mb_stripos($token_info_5min_ago['title'], 'PTNS') !== false) {
+        //pump tracking and notification system
+        $notify_level = 15;
+        $title_array = explode('-', $token_info_5min_ago['title']);
+        if ((int)$title_array[1] and $title_array[2]) {
+          $notify_level = $title_array[1];
+        }
+        if ($token_5min_price_diff >= $notify_level) {
+          $token_notify = '✴️✴️✴️ '.$token_info_5min_ago['title'].' взлетает! ✴️✴️✴️';
+        }
+      } else {
+        //main tokens
+        if ($token_5min_price_diff >= 30) {
+          $token_notify = '❇️❇️❇️ '.$token_info_5min_ago['title'].' пампится! ❇️❇️❇️';
+        } else if ($token_5min_price_diff >= 7.5 or ($token_30min_price_diff >= 30 and $token_5min_price_diff >= 5 and $token_30min_price_diff)) {
+          $token_notify = '🟢 '.$token_info_5min_ago['title'].' быстро растёт 🟢';
+        } else if ($token_5min_price_diff <= -25) {
+          $token_notify = '🛑🛑🛑 '.$token_info_5min_ago['title'].' обваливается! 🛑🛑🛑';
+        } else if ($token_5min_price_diff <= -7.5 or ($token_30min_price_diff <= -25 and $token_5min_price_diff <= -5 and $token_30min_price_diff)) {
+          $token_notify = '🔴 '.$token_info_5min_ago['title'].' быстро падает 🔴';
+        }
+      }
+      if ($token_notify) {
+        $token_notify = $token_notify."\r\n".'`'.$token_address.'`'."\r\n".'Текущая цена - '.$token_price_round."\r\n";
+        if ($token_5min_price_diff !== false) {
+          if ($token_5min_price_diff > 0) {
+            $token_notify = $token_notify.'🔹 5 мин +'.$token_5min_price_diff.' %';
+          } else if ($token_5min_price_diff == 0) {
+            $token_notify = $token_notify.'▫️ 5 мин 0 %';
+          } else {
+            $token_notify = $token_notify.'🔻 5 мин '.$token_5min_price_diff.' %';
+          }
+        }
+        if ($token_30min_price_diff !== false) {
+          if ($token_30min_price_diff > 0) {
+            $token_notify = $token_notify.' // 🔹 30 мин +'.$token_30min_price_diff.' %';
+          } else if ($token_30min_price_diff == 0) {
+            $token_notify = $token_notify.' // ▫️ 30 мин 0 %';
+          } else {
+            $token_notify = $token_notify.' // 🔻 30 мин '.$token_30min_price_diff.' %';
+          }
+        }
+        if ($token_1hour_price_diff !== false) {
+          if ($token_1hour_price_diff > 0) {
+            $token_notify = $token_notify."\r\n".'🔹 1 час +'.$token_1hour_price_diff.' %';
+          } else if ($token_1hour_price_diff == 0) {
+            $token_notify = $token_notify."\r\n".'▫️ 1 час 0 %';
+          } else {
+            $token_notify = $token_notify."\r\n".'🔻 1 час '.$token_1hour_price_diff.' %';
+          }
+        }
+        if ($token_6hour_price_diff !== false) {
+          if ($token_6hour_price_diff > 0) {
+            $token_notify = $token_notify.' // 🔹 6 часов +'.$token_6hour_price_diff.' %';
+          } else if ($token_6hour_price_diff == 0) {
+            $token_notify = $token_notify.' // ▫️ 6 часов 0 %';
+          } else {
+            $token_notify = $token_notify.' // 🔻 6 часов '.$token_6hour_price_diff.' %';
+          }
+        }
+        if ($token_1day_price_diff !== false) {
+          if ($token_1day_price_diff > 0) {
+            $token_notify = $token_notify.' // 🔹 сутки +'.$token_1day_price_diff.' %';
+          } else if ($token_1day_price_diff == 0) {
+            $token_notify = $token_notify.' // ▫️ сутки 0 %';
+          } else {
+            $token_notify = $token_notify.' // 🔻 сутки '.$token_1day_price_diff.' %';
+          }
+        }
+        $notify_data[$token_address] = $token_notify;
+      }
+      //echo 'token - '.$token_info_5min_ago['title'].', price_diff '.$token_5min_price_diff.'<br>';
+    }
+    //echo '<pre>'; print_r($notify_data); echo '</pre>';
+    return $notify_data;
+  }
+
+
 
 }
