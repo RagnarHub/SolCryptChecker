@@ -241,6 +241,59 @@ class CryptHandler
     return $notify_data;
   }
 
+  public function send_users_notifications($notify_data)
+  {
+    foreach ($this->USERS as $user => $user_data) {
+      $user_notification = '';
+      $user_tokens = $this->FOLLOWING_TOKENS[$user];
+      foreach ($notify_data as $token => $token_info) {
+        if (in_array($token, $user_tokens)) {
+          if ($user_notification) $user_notification = $user_notification."\r\n"."\r\n";
+          $user_notification = $user_notification.$token_info;
+        }
+      }
+      $chat_id = $this->USERS[$user]['tg_chat_id'];
+      if ($chat_id) {
+        $this->TG_NOTIFY->send_message($chat_id, $user_notification);
+      }
+    }
+    return true;
+  }
 
+  public function send_token_price_request($tokens_list_str)
+  {
+    $queryUrl = 'simple/networks/solana/token_price/'.$tokens_list_str;
+    $res = $this->send_post_geckoterminal($queryUrl, false);
+    $prices_data = $res['data']['attributes']['token_prices'];
+    return $prices_data;
+    return array();
+  }
 
+	public function send_post_geckoterminal($queryUrl, $queryData)
+	{
+    $queryUrl = 'https://api.geckoterminal.com/api/v2/'.$queryUrl;
+    $headers = array(
+      'Content-Type: application/json; charset=utf-8',
+			'Accept: application/json;version=20230302',
+		);
+    if ($queryData) {
+      $queryData = http_build_query($queryData);
+      $queryUrl = $queryUrl.'?'.$queryData;
+    }
+		$curl = curl_init();
+		curl_setopt_array($curl, array(
+			CURLOPT_SSL_VERIFYPEER => 0,
+			//CURLOPT_POST => 1,
+			CURLOPT_HEADER => 0,
+			CURLOPT_RETURNTRANSFER => 1,
+			CURLOPT_URL => $queryUrl,
+      //CURLOPT_POSTFIELDS => $queryData,
+      CURLOPT_HTTPHEADER => $headers,
+			CURLOPT_TIMEOUT => 60,
+			CURLOPT_NOSIGNAL => 60,
+		));
+		$result = curl_exec($curl);
+		curl_close($curl);
+		return json_decode($result, 1);
+	}
 }
