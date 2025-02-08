@@ -69,4 +69,16 @@ class BdRequests
     return json_decode($row['LOG'], 1);
   }
 
+  public function clear_old_log()
+  {
+    $time_point = date_create();
+    date_add($time_point, date_interval_create_from_date_string("-40 days"));
+    $date = date_format($time_point, 'Y-m-d H:i:s');
+    echo $date.'<br>';
+    $result = $this->MYSQL->query("SELECT `ID` FROM `".$this->TABLES['crypt_log']."` WHERE `DATE` <= '$date' LIMIT 1000");
+    while ($row = $result->fetch_assoc()) {
+      $this->MYSQL->query("DELETE FROM `".$this->TABLES['crypt_log']."` WHERE `ID` = ".$row['ID']." LIMIT 1");
+    }
+  }
+
 }
